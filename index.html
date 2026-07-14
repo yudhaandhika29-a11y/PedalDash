@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Sepeda Statis</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        /* ================= TEMA MODE TERANG (LIGHT MODE) ================= */
+        :root {
+            --bg-dark: #f8fafc;        
+            --card-bg: #ffffff;        
+            --electric-blue: #0284c7;  
+            --text-white: #0f172a;     
+            --text-muted: #64748b;     
+            --sidebar-width: 260px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-white);
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* ================= INTRO ANIMATION (OPENING) ================= */
+        #intro-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #ffffff; 
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.8s ease, visibility 0.8s ease;
+        }
+
+        #intro-screen.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .intro-logo {
+            width: 60px; 
+            margin-bottom: 45px; 
+            animation: pulseLogo 2s infinite alternate;
+        }
+
+        .intro-title-img {
+            width: 320px; 
+            max-width: 90%;
+            margin-bottom: 40px;
+            object-fit: contain;
+        }
+
+        .loader-bar {
+            width: 250px;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .loader-fill {
+            width: 0%;
+            height: 100%;
+            background: var(--electric-blue);
+            animation: loadAnim 2.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        @keyframes pulseLogo {
+            0% { transform: scale(0.95); filter: drop-shadow(0 0 10px rgba(2, 132, 199, 0.2)); }
+            100% { transform: scale(1.05); filter: drop-shadow(0 0 25px rgba(2, 132, 199, 0.6)); }
+        }
+
+        @keyframes loadAnim {
+            0% { width: 0%; }
+            40% { width: 60%; }
+            100% { width: 100%; }
+        }
+
+        /* ================= NAVBAR / HEADER ================= */
+        .header {
+            background-color: var(--card-bg);
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            position: fixed;
+            width: 100%;
+            z-index: 1000;
+            border-bottom: 2px solid var(--electric-blue);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+        }
+
+        .menu-toggle {
+            font-size: 26px;
+            color: var(--electric-blue);
+            cursor: pointer;
+            margin-right: 20px;
+            transition: 0.3s;
+        }
+
+        .menu-toggle:hover {
+            opacity: 0.7;
+        }
+
+        .header-logo-img {
+            height: 35px; 
+            object-fit: contain;
+        }
+
+        /* ================= STATUS KONEKSI ================= */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            cursor: help;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #ef4444; 
+            box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+            transition: 0.3s ease;
+        }
+
+        .status-dot.connected {
+            background-color: #22c55e; 
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+        }
+
+        /* ================= FOOTER ================= */
+        .footer {
+            background-color: var(--card-bg);
+            padding: 20px;
+            text-align: center;
+            border-top: 2px solid var(--electric-blue);
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: auto; 
+            position: relative;
+            z-index: 1000;
+        }
+
+        /* ================= SIDEBAR ================= */
+        .sidebar {
+            position: fixed;
+            top: 70px;
+            left: -100%; 
+            width: var(--sidebar-width);
+            height: calc(100vh - 70px);
+            background-color: var(--card-bg);
+            transition: 0.4s ease;
+            z-index: 999;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.05);
+            border-right: 1px solid #e2e8f0;
+        }
+
+        .sidebar.active {
+            left: 0;
+        }
+
+        .sidebar ul {
+            list-style: none;
+            padding-top: 20px;
+        }
+
+        .sidebar ul li {
+            padding: 18px 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.3s;
+            border-left: 4px solid transparent;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .sidebar ul li i {
+            margin-right: 15px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .sidebar ul li:hover, .sidebar ul li.active-menu {
+            background-color: #f1f5f9;
+            border-left: 4px solid var(--electric-blue);
+            color: var(--electric-blue);
+        }
+
+        .sidebar ul li.active-menu i {
+            color: var(--electric-blue);
+        }
+
+        /* ================= KONTEN UTAMA ================= */
+        .main-content {
+            padding: 90px 20px 20px 20px;
+            transition: 0.4s ease;
+            flex: 1; 
+        }
+
+        @media (min-width: 992px) {
+            .sidebar { left: 0; }
+            .menu-toggle { display: none; } 
+            .sidebar.collapsed { left: -260px; }
+            .main-content { margin-left: var(--sidebar-width); }
+            .main-content.expanded { margin-left: 0; }
+        }
+
+        .section {
+            display: none;
+            animation: fadeIn 0.4s ease-in-out;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ================= KARTU & GRID ================= */
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); 
+            gap: 25px;
+            margin-top: 20px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+            border-top: 3px solid var(--electric-blue); 
+            position: relative;
+        }
+
+        .card h3 {
+            color: var(--text-white); 
+            font-size: 14px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 700;
+        }
+
+        /* ================= DESAIN MENU HOME BARU ================= */
+        .home-card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+        }
+
+        .home-banner {
+            width: 100%;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-bottom: 3px solid var(--electric-blue);
+            overflow: hidden;
+            padding: 20px 0;
+        }
+
+        .home-banner img {
+            width: 100%;
+            height: auto;
+            max-height: 400px; 
+            object-fit: contain; 
+        }
+
+        .home-content {
+            padding: 40px 30px;
+        }
+
+        .home-header-text {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .home-header-text h2 {
+            color: var(--text-white);
+            font-size: 32px;
+            margin-bottom: 10px; 
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+
+        .home-header-text .subtitle {
+            font-size: 18px;
+            color: var(--electric-blue);
+            font-weight: 600;
+        }
+
+        .home-description {
+            max-width: 800px;
+            margin: 0 auto 40px auto;
+            font-size: 16px;
+            line-height: 1.8;
+            color: var(--text-muted); 
+            text-align: center;
+        }
+
+        .home-features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .feature-box {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 25px 20px;
+            border-radius: 12px;
+            text-align: center;
+            transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+        }
+
+        .feature-box:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 10px 25px rgba(2, 132, 199, 0.1);
+            border-color: var(--electric-blue);
+        }
+
+        .feature-box i {
+            font-size: 36px;
+            color: var(--electric-blue);
+            margin-bottom: 15px;
+        }
+
+        .feature-box h4 {
+            color: var(--text-white);
+            margin-bottom: 10px;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .feature-box p {
+            font-size: 14px !important;
+            color: var(--text-muted) !important;
+            line-height: 1.6 !important;
+            text-align: center !important;
+            margin: 0 !important;
+        }
+
+        /* ================= TAMPILAN DIGITAL ================= */
+        .digital-value {
+            font-size: 58px;
+            font-weight: 900; 
+            color: var(--electric-blue);
+            text-align: center;
+            margin: 15px 0;
+            font-family: 'Arial Black', Impact, sans-serif; 
+            letter-spacing: 2px;
+        }
+
+        .unit {
+            font-size: 24px;
+            color: var(--text-white);
+            font-weight: bold;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            letter-spacing: normal;
+        }
+
+        /* ================= BUTTON TOGGLE ================= */
+        .btn-toggle {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-top: 20px;
+            background-color: #f8fafc;
+            border: 1px solid #cbd5e1;
+            color: var(--text-white);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: 0.3s;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-toggle:hover {
+            border-color: var(--electric-blue);
+            color: #ffffff;
+            background-color: var(--electric-blue);
+        }
+
+        .chart-container {
+            margin-top: 20px;
+            display: none; 
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        /* ================= SPEEDOMETER (RPM) ================= */
+        .gauge-container {
+            position: relative;
+            width: 100%;
+            height: 220px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .gauge-text {
+            position: absolute;
+            top: 65%;
+            font-size: 42px;
+            font-weight: 900; 
+            color: var(--electric-blue);
+            font-family: 'Arial Black', Impact, sans-serif; 
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        /* ================= BATERAI CSS ================= */
+        .battery-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 20px 0;
+        }
+        
+        .battery-body {
+            width: 180px;
+            height: 80px;
+            border: 4px solid var(--text-white);
+            border-radius: 8px;
+            position: relative;
+            padding: 3px;
+            background: var(--card-bg);
+        }
+
+        .battery-body::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: -12px;
+            transform: translateY(-50%);
+            width: 8px;
+            height: 35px;
+            background-color: var(--text-white);
+            border-radius: 0 4px 4px 0;
+        }
+
+        .battery-level {
+            height: 100%;
+            background-color: #22c55e;
+            border-radius: 4px;
+            width: 100%; 
+            transition: width 0.5s ease-in-out;
+        }
+
+        .battery-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffffff;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+            font-weight: 900; 
+            font-family: 'Arial Black', Impact, sans-serif; 
+            font-size: 28px;
+            z-index: 10;
+        }
+
+        .battery-info {
+            margin-top: 20px;
+            text-align: center;
+            color: var(--text-white);
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="intro-screen">
+        <img src="https://i.ibb.co.com/wZ4p7xhb/logo-hima.png" alt="Logo Hima" class="intro-logo">
+        <img src="https://i.ibb.co.com/Pv0s30mN/Screenshot-2026-07-14-164720.png" alt="IoT Monitoring" class="intro-title-img">
+        <div class="loader-bar">
+            <div class="loader-fill"></div>
+        </div>
+    </div>
+
+    <header class="header">
+        <div class="header-left">
+            <i class="fas fa-bars menu-toggle" id="menuToggle" onclick="toggleSidebar()"></i>
+            <img src="https://i.ibb.co.com/sdVzN4cJ/Screenshot-2026-07-14-164753.png" alt="IoT Sepeda Statis Logo" class="header-logo-img">
+        </div>
+        <div class="connection-status" id="statusContainer" title="Menghubungkan ke Server...">
+            <div class="status-dot" id="statusDot"></div>
+        </div>
+    </header>
+
+    <nav class="sidebar" id="sidebar">
+        <ul>
+            <li class="active-menu" onclick="showSection('home', this)"><i class="fas fa-home"></i> HOME</li>
+            <li onclick="showSection('bike-monitor', this)"><i class="fas fa-bicycle"></i> MONITORING SEPEDA</li>
+            <li onclick="showSection('battery-monitor', this)"><i class="fas fa-car-battery"></i> MONITORING BATERAI</li>
+        </ul>
+    </nav>
+
+    <main class="main-content" id="mainContent">
+        
+        <section id="home" class="section active">
+            <div class="home-card">
+                <div class="home-banner">
+                    <img src="https://i.ibb.co.com/wrFrtstf/Desain-tanpa-judul-8.png" alt="Desain-tanpa-judul-8">
+                </div>
+                
+                <div class="home-content">
+                    <div class="home-header-text">
+                        <h2>Sistem Sepeda Statis</h2>
+                        <p class="subtitle">Memadukan Olahraga & Teknologi Energi Hijau</p>
+                    </div>
+
+                    <div class="home-description">
+                        <p>Sistem ini mendefinisikan ulang fungsi sepeda statis. Memanfaatkan generator presisi dan mikrokontroler, gerak kinetik dari kayuhan pengguna dikonversi secara langsung menjadi daya listrik. Energi ini dapat dipantau secara real-time, didistribusikan, atau disimpan ke dalam baterai.</p>
+                    </div>
+
+                    <div class="home-features">
+                        <div class="feature-box">
+                            <i class="fas fa-bolt"></i>
+                            <h4>Konversi Pintar</h4>
+                            <p>Mengubah gerak kinetik kayuhan Anda menjadi tegangan listrik yang stabil melalui generator presisi.</p>
+                        </div>
+                        
+                        <div class="feature-box">
+                            <i class="fas fa-satellite-dish"></i>
+                            <h4>Monitor Real-Time</h4>
+                            <p>Pemantauan instan berbasis IoT untuk RPM, Tegangan, Arus, dan Daya listrik yang sedang dihasilkan.</p>
+                        </div>
+                        
+                        <div class="feature-box">
+                            <i class="fas fa-leaf"></i>
+                            <h4>Gaya Hidup Sehat</h4>
+                            <p>Sebuah terobosan sederhana untuk kesehatan tubuh Anda sekaligus solusi cerdas adopsi energi terbarukan.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="bike-monitor" class="section">
+            <div class="grid-container">
+                
+                <div class="card">
+                    <h3>Kecepatan Putaran (RPM)</h3>
+                    <div class="gauge-container">
+                        <canvas id="rpmGauge"></canvas>
+                        <div class="gauge-text" id="rpmValueText">0 <span class="unit">RPM</span></div>
+                    </div>
+                    <button class="btn-toggle" onclick="toggleChart('chartRpmContainer', this)">
+                        <i class="fas fa-chart-line"></i> Tampilkan Grafik
+                    </button>
+                    <div class="chart-container" id="chartRpmContainer">
+                        <canvas id="chartRpm"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Tegangan Generator</h3>
+                    <div class="digital-value" id="bikeVoltage">
+                        0.00 <span class="unit">V</span>
+                    </div>
+                    <button class="btn-toggle" onclick="toggleChart('chartBikeVoltsContainer', this)">
+                        <i class="fas fa-chart-area"></i> Tampilkan Grafik
+                    </button>
+                    <div class="chart-container" id="chartBikeVoltsContainer">
+                        <canvas id="chartBikeVolts"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Arus Generator</h3>
+                    <div class="digital-value" id="bikeCurrent">
+                        0.00 <span class="unit">A</span>
+                    </div>
+                    <button class="btn-toggle" onclick="toggleChart('chartBikeCurrentContainer', this)">
+                        <i class="fas fa-chart-bar"></i> Tampilkan Grafik
+                    </button>
+                    <div class="chart-container" id="chartBikeCurrentContainer">
+                        <canvas id="chartBikeCurrent"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Daya Listrik (Watt)</h3>
+                    <div class="digital-value" id="bikePower">
+                        0.00 <span class="unit">W</span>
+                    </div>
+                    <button class="btn-toggle" onclick="toggleChart('chartBikePowerContainer', this)">
+                        <i class="fas fa-bolt"></i> Tampilkan Grafik
+                    </button>
+                    <div class="chart-container" id="chartBikePowerContainer">
+                        <canvas id="chartBikePower"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <section id="battery-monitor" class="section">
+            <div class="grid-container">
+                
+                <div class="card">
+                    <h3>Status Penyimpanan Baterai</h3>
+                    <div class="battery-container">
+                        <div class="battery-body">
+                            <div class="battery-level" id="batteryLevelBar" style="width: 0%;"></div>
+                            <div class="battery-text" id="batteryPercentageText">0%</div>
+                        </div>
+                        <div class="battery-info">
+                            <i class="fas fa-hourglass-half"></i> Estimasi Waktu Habis:<br>
+                            <strong style="color: var(--electric-blue); font-size: 26px; display: block; margin-top: 5px; font-family: 'Arial Black', Impact, sans-serif;" id="batteryTimeLeft">-- Jam -- Menit</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Tegangan Baterai</h3>
+                    <div class="digital-value" id="battVoltage">
+                        0.00 <span class="unit">V</span>
+                    </div>
+                    <button class="btn-toggle" onclick="toggleChart('chartBattVoltsContainer', this)">
+                        <i class="fas fa-chart-area"></i> Tampilkan Grafik
+                    </button>
+                    <div class="chart-container" id="chartBattVoltsContainer">
+                        <canvas id="chartBattVolts"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Arus Baterai</h3>
+                    <div class="digital-value" id="battCurrent">
+                        0.00 <span class="unit">A</span>
+                    </div>
+                    <button class="btn-toggle" onclick="toggleChart('chartBattCurrentContainer', this)">
+                        <i class="fas fa-chart-bar"></i> Tampilkan Grafik
+                    </button>
+                    <div class="chart-container" id="chartBattCurrentContainer">
+                        <canvas id="chartBattCurrent"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Daya Baterai (Watt)</h3>
+                    <div class="digital-value" id="battPower">
+                        0.00 <span class="unit">W</span>
+                    </div>
+                    <button class="btn-toggle" onclick="toggleChart('chartBattPowerContainer', this)">
+                        <i class="fas fa-bolt"></i> Tampilkan Grafik
+                    </button>
+                    <div class="chart-container" id="chartBattPowerContainer">
+                        <canvas id="chartBattPower"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2026 Pembangkit Listrik Sepeda Statis Universitas Teknokrat Indonesia</p>
+    </footer>
+
+    <script>
+        // ==========================================
+        // 0. LOGIKA INTRO / OPENING ANIMATION
+        // ==========================================
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const introScreen = document.getElementById('intro-screen');
+                introScreen.classList.add('hidden');
+                setTimeout(() => { introScreen.style.display = 'none'; }, 800);
+            }, 2800); 
+        });
+
+        // ==========================================
+        // 1. INISIALISASI FIREBASE REALTIME DATABASE
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyBb16U8DZ7QwXGGmo8mipQzobPCHAXkkWI",
+            authDomain: "sepeda-statis.firebaseapp.com",
+            databaseURL: "https://sepeda-statis-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "sepeda-statis",
+            storageBucket: "sepeda-statis.firebasestorage.app",
+            messagingSenderId: "131047084898",
+            appId: "1:131047084898:web:30cf4d3a3edd9e0327923b",
+            measurementId: "G-47H1KPE8DJ"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // ==========================================
+        // 1.5 LOGIKA INDIKATOR STATUS KONEKSI 
+        // ==========================================
+        const statusDot = document.getElementById('statusDot');
+        const statusContainer = document.getElementById('statusContainer');
+        
+        db.ref('.info/connected').on('value', function(snap) {
+            if (snap.val() === true) {
+                statusDot.classList.add('connected');
+                statusContainer.title = "Terhubung dengan Server Database (Online)";
+            } else {
+                statusDot.classList.remove('connected');
+                statusContainer.title = "Koneksi ke Server Terputus (Offline)";
+            }
+        });
+
+        // ==========================================
+        // 2. LOGIKA MENU & RESPONSIVITAS
+        // ==========================================
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('mainContent');
+        
+        function toggleSidebar() {
+            if (window.innerWidth < 992) {
+                sidebar.classList.toggle('active');
+            } else {
+                sidebar.classList.toggle('collapsed');
+                mainContent.classList.toggle('expanded');
+            }
+        }
+
+        function showSection(sectionId, element) {
+            document.querySelectorAll('.section').forEach(sec => sec.classList.remove('active'));
+            document.getElementById(sectionId).classList.add('active');
+            
+            if(element) {
+                document.querySelectorAll('.sidebar ul li').forEach(li => li.classList.remove('active-menu'));
+                element.classList.add('active-menu');
+            }
+
+            if (window.innerWidth < 992) { sidebar.classList.remove('active'); }
+        }
+
+        function toggleChart(containerId, buttonElement) {
+            const container = document.getElementById(containerId);
+            if (container.style.display === "none" || container.style.display === "") {
+                container.style.display = "block";
+                buttonElement.innerHTML = `<i class="fas fa-eye-slash"></i> Sembunyikan Grafik`;
+            } else {
+                container.style.display = "none";
+                buttonElement.innerHTML = `<i class="fas fa-chart-line"></i> Tampilkan Grafik`;
+            }
+        }
+
+        // ==========================================
+        // 3. KONFIGURASI CHART.JS & GRAFIK
+        // ==========================================
+        Chart.defaults.color = '#64748b'; 
+        Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+        
+        // Speedometer RPM
+        const ctxRpmGauge = document.getElementById('rpmGauge').getContext('2d');
+        const rpmGauge = new Chart(ctxRpmGauge, {
+            type: 'doughnut',
+            data: {
+                labels: ['RPM', 'Sisa'],
+                datasets: [{
+                    data: [0, 100], 
+                    backgroundColor: ['#0284c7', '#e2e8f0'], 
+                    borderWidth: 0,
+                    circumference: 240, 
+                    rotation: 240
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '85%',
+                plugins: { legend: { display: false }, tooltip: { enabled: false } }
+            }
+        });
+
+        function getActualTimeLabels() {
+            const labels = [];
+            const now = new Date();
+            for(let i = 60; i >= 0; i -= 5) { 
+                const timePoint = new Date(now.getTime() - (i * 60000));
+                let hours = timePoint.getHours().toString().padStart(2, '0');
+                let minutes = timePoint.getMinutes().toString().padStart(2, '0');
+                labels.push(`${hours}:${minutes}`);
+            }
+            return labels;
+        }
+
+        const timeLabels = getActualTimeLabels();
+
+        function createLineChart(ctxId, labelStr, colorHex, initialData) {
+            const ctx = document.getElementById(ctxId).getContext('2d');
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: timeLabels,
+                    datasets: [{
+                        label: labelStr, data: initialData, borderColor: colorHex, backgroundColor: colorHex + '22',
+                        borderWidth: 2, pointBackgroundColor: colorHex, pointRadius: 2, fill: true, tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: false, grid: { color: 'rgba(0, 0, 0, 0.05)' } }, 
+                        x: { grid: { color: 'rgba(0, 0, 0, 0.05)' } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        // Cek Local Storage
+        const savedHistory = JSON.parse(localStorage.getItem('chartHistorySepeda')) || {
+            rpmData: Array(13).fill(0),
+            bikeVoltsData: Array(13).fill(0),
+            bikeCurrData: Array(13).fill(0),
+            bikePowerData: Array(13).fill(0),
+            battVoltsData: Array(13).fill(0),
+            battCurrData: Array(13).fill(0),
+            battPowerData: Array(13).fill(0)
+        };
+
+        let rpmData = savedHistory.rpmData;
+        let bikeVoltsData = savedHistory.bikeVoltsData;
+        let bikeCurrData = savedHistory.bikeCurrData;
+        let bikePowerData = savedHistory.bikePowerData;
+        
+        let battVoltsData = savedHistory.battVoltsData;
+        let battCurrData = savedHistory.battCurrData;
+        let battPowerData = savedHistory.battPowerData;
+        
+        // Pembedaan 3 Warna Grafik Sesuai Jenis Metrik
+        const colorVolt = '#ea580c';  // Oranye untuk Tegangan (V)
+        const colorCurr = '#16a34a';  // Hijau untuk Arus (A)
+        const colorPower = '#9333ea'; // Ungu untuk Daya (W)
+        const colorRpm = '#0284c7';   // Biru untuk RPM
+
+        // Pembuatan Grafik
+        const chartRpm = createLineChart('chartRpm', 'RPM', colorRpm, rpmData);
+        const chartBikeVolts = createLineChart('chartBikeVolts', 'Tegangan (V)', colorVolt, bikeVoltsData);
+        const chartBikeCurrent = createLineChart('chartBikeCurrent', 'Arus (A)', colorCurr, bikeCurrData);
+        const chartBikePower = createLineChart('chartBikePower', 'Daya (W)', colorPower, bikePowerData); 
+
+        const chartBattVolts = createLineChart('chartBattVolts', 'Teg. Baterai (V)', colorVolt, battVoltsData);
+        const chartBattCurrent = createLineChart('chartBattCurrent', 'Arus Baterai (A)', colorCurr, battCurrData);
+        const chartBattPower = createLineChart('chartBattPower', 'Daya Baterai (W)', colorPower, battPowerData); 
+
+        function updateChartHistory(chartObject, dataArray, newValue) {
+            dataArray.shift(); 
+            dataArray.push(newValue);
+            chartObject.update();
+        }
+
+        // ==========================================
+        // 4. LOGIKA PERHITUNGAN PERSENTASE BATERAI
+        // ==========================================
+        const batteryCurve = [
+            { v: 13.00, p: 100 },
+            { v: 12.75, p: 90 },
+            { v: 12.50, p: 80 },
+            { v: 12.30, p: 70 },
+            { v: 12.15, p: 60 },
+            { v: 12.05, p: 50 },
+            { v: 11.95, p: 40 },
+            { v: 11.81, p: 30 },
+            { v: 11.66, p: 20 },
+            { v: 11.51, p: 10 },
+            { v: 10.50, p: 0 }
+        ];
+
+        function calculateBatteryPercentage(voltage) {
+            if (voltage >= 13.00) return 100;
+            if (voltage <= 10.50) return 0;
+            for (let i = 0; i < batteryCurve.length - 1; i++) {
+                let upper = batteryCurve[i];
+                let lower = batteryCurve[i+1];
+                if (voltage <= upper.v && voltage > lower.v) {
+                    let pct = lower.p + ((voltage - lower.v) * (upper.p - lower.p)) / (upper.v - lower.v);
+                    return Math.round(pct); 
+                }
+            }
+            return 0;
+        }
+
+        // ==========================================
+        // 5. MENDENGARKAN DATA FIREBASE SECARA LIVE
+        // ==========================================
+        let currentAlertState = "normal"; 
+
+        db.ref('/').on('value', (snapshot) => {
+            const data = snapshot.val();
+            
+            if (data) {
+                const rpm = data.rpm || 0;
+                const bikeVolt = data.bikeVolt || 0;
+                const bikeCurr = data.bikeCurr || 0;
+                const battVolt = data.battVolt || 0;
+                const battCurr = data.battCurr || 0;
+                const timeLeft = data.timeLeft || "-- Jam -- Menit";
+
+                const bikePower = bikeVolt * bikeCurr;
+                const battPower = battVolt * battCurr;
+                const calculatedBattPct = calculateBatteryPercentage(battVolt);
+
+                // --- A. UPDATE UI ---
+                document.getElementById('rpmValueText').innerHTML = `${rpm} <br><span class="unit">RPM</span>`;
+                const remaining = 200 - rpm;
+                rpmGauge.data.datasets[0].data = [rpm, remaining < 0 ? 0 : remaining];
+                rpmGauge.update();
+
+                document.getElementById('bikeVoltage').innerHTML = `${Number(bikeVolt).toFixed(2)} <span class="unit">V</span>`;
+                document.getElementById('bikeCurrent').innerHTML = `${Number(bikeCurr).toFixed(2)} <span class="unit">A</span>`;
+                document.getElementById('bikePower').innerHTML = `${Number(bikePower).toFixed(2)} <span class="unit">W</span>`;
+
+                document.getElementById('battVoltage').innerHTML = `${Number(battVolt).toFixed(2)} <span class="unit">V</span>`;
+                document.getElementById('battCurrent').innerHTML = `${Number(battCurr).toFixed(2)} <span class="unit">A</span>`;
+                document.getElementById('battPower').innerHTML = `${Number(battPower).toFixed(2)} <span class="unit">W</span>`;
+                
+                document.getElementById('batteryPercentageText').innerText = `${calculatedBattPct}%`;
+                const batteryLevelBar = document.getElementById('batteryLevelBar');
+                batteryLevelBar.style.width = `${calculatedBattPct}%`;
+                document.getElementById('batteryTimeLeft').innerText = timeLeft;
+
+                // --- B. INDIKATOR WARNA & POP-UP NOTIFIKASI ---
+                if (calculatedBattPct === 100) {
+                    batteryLevelBar.style.backgroundColor = '#0284c7'; 
+                    
+                    if (currentAlertState !== "full") {
+                        Swal.fire({
+                            title: 'Baterai Penuh 100%',
+                            text: 'Penyimpanan daya telah mencapai kapasitas maksimal. Anda dapat menghentikan kayuhan.',
+                            icon: 'success',
+                            background: '#ffffff', color: '#0f172a', confirmButtonColor: '#0284c7'
+                        });
+                        currentAlertState = "full";
+                    }
+                } else if (calculatedBattPct <= 15) {
+                    batteryLevelBar.style.backgroundColor = '#ef4444'; 
+
+                    if (currentAlertState !== "low") {
+                        Swal.fire({
+                            title: 'Baterai Lemah!',
+                            text: 'Kapasitas baterai mencapai batas kritis (15%). Silakan lakukan kayuhan untuk mengisi daya kembali.',
+                            icon: 'warning',
+                            background: '#ffffff', color: '#0f172a', confirmButtonColor: '#0284c7'
+                        });
+                        currentAlertState = "low";
+                    }
+                } else {
+                    batteryLevelBar.style.backgroundColor = '#22c55e'; // Hijau normal
+                    if(calculatedBattPct > 15 && calculatedBattPct < 100){
+                        currentAlertState = "normal";
+                    }
+                }
+
+                // --- C. UPDATE GRAFIK & SIMPAN KE LOCAL STORAGE ---
+                updateChartHistory(chartRpm, rpmData, rpm);
+                updateChartHistory(chartBikeVolts, bikeVoltsData, bikeVolt);
+                updateChartHistory(chartBikeCurrent, bikeCurrData, bikeCurr);
+                updateChartHistory(chartBikePower, bikePowerData, bikePower);
+
+                updateChartHistory(chartBattVolts, battVoltsData, battVolt);
+                updateChartHistory(chartBattCurrent, battCurrData, battCurr);
+                updateChartHistory(chartBattPower, battPowerData, battPower);
+
+                // Simpan history ke memori browser
+                localStorage.setItem('chartHistorySepeda', JSON.stringify({
+                    rpmData, bikeVoltsData, bikeCurrData, bikePowerData,
+                    battVoltsData, battCurrData, battPowerData
+                }));
+            }
+        });
+
+    </script>
+</body>
+</html>
