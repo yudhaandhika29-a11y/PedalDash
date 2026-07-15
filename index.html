@@ -550,7 +550,7 @@
                 
                 <div class="home-content">
                     <div class="home-header-text">
-                        <h2>Sistem Sepeda Statis</h2>
+                        <h2>Sistem Sepeda Statis Terintegrasi</h2>
                         <p class="subtitle">Memadukan Olahraga & Teknologi Energi Hijau</p>
                     </div>
 
@@ -788,11 +788,13 @@
         }
 
         // ==========================================
-        // 3. KONFIGURASI CHART.JS & GRAFIK
+        // 3. KONFIGURASI CHART.JS (TERKONEKSI FIREBASE SECARA GLOBAL)
         // ==========================================
         Chart.defaults.color = '#64748b'; 
         Chart.defaults.font.family = "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
         
+        const MAX_POINTS = 1800; // Kapasitas 1 Jam (3600 detik / 2 detik)
+
         // Speedometer RPM
         const ctxRpmGauge = document.getElementById('rpmGauge').getContext('2d');
         const rpmGauge = new Chart(ctxRpmGauge, {
@@ -813,99 +815,83 @@
             }
         });
 
-        function getActualTimeLabels() {
-            const labels = [];
-            const now = new Date();
-            for(let i = 60; i >= 0; i -= 5) { 
-                const timePoint = new Date(now.getTime() - (i * 60000));
-                let hours = timePoint.getHours().toString().padStart(2, '0');
-                let minutes = timePoint.getMinutes().toString().padStart(2, '0');
-                labels.push(`${hours}:${minutes}`);
-            }
-            return labels;
-        }
+        // Kosongkan array awal (Akan diisi langsung dari Firebase)
+        let timeLabelsData = [];
+        let rpmData = [];
+        let bikeVoltsData = [];
+        let bikeCurrData = [];
+        let bikePowerData = [];
+        let battVoltsData = [];
+        let battCurrData = [];
+        let battPowerData = [];
 
-        const timeLabels = getActualTimeLabels();
-
-        function createLineChart(ctxId, labelStr, colorHex, initialData) {
+        // Fungsi Pembuat Grafik Garis dengan Teks Sumbu X Miring
+        function createLineChart(ctxId, labelStr, colorHex, initialDataArray) {
             const ctx = document.getElementById(ctxId).getContext('2d');
             return new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: timeLabels,
+                    labels: timeLabelsData, 
                     datasets: [{
-                        label: labelStr, data: initialData, borderColor: colorHex, backgroundColor: colorHex + '22',
-                        borderWidth: 2, pointBackgroundColor: colorHex, pointRadius: 2, fill: true, tension: 0.4
+                        label: labelStr, 
+                        data: initialDataArray, 
+                        borderColor: colorHex, 
+                        backgroundColor: colorHex + '22',
+                        borderWidth: 2, 
+                        fill: true, 
+                        tension: 0.1, 
+                        pointRadius: 0, 
+                        pointHoverRadius: 5
                     }]
                 },
                 options: {
-                    responsive: true, maintainAspectRatio: false,
+                    animation: false, 
+                    responsive: true, 
+                    maintainAspectRatio: false,
                     scales: {
                         y: { beginAtZero: false, grid: { color: 'rgba(0, 0, 0, 0.05)' } }, 
-                        x: { grid: { color: 'rgba(0, 0, 0, 0.05)' } }
+                        x: { 
+                            grid: { color: 'rgba(0, 0, 0, 0.05)' },
+                            ticks: {
+                                maxRotation: 45, // Teks dimiringkan 45 derajat agar tidak menumpuk
+                                minRotation: 45
+                            }
+                        }
                     },
                     plugins: { legend: { display: false } }
                 }
             });
         }
-
-        // Cek Local Storage
-        const savedHistory = JSON.parse(localStorage.getItem('chartHistorySepeda')) || {
-            rpmData: Array(13).fill(0),
-            bikeVoltsData: Array(13).fill(0),
-            bikeCurrData: Array(13).fill(0),
-            bikePowerData: Array(13).fill(0),
-            battVoltsData: Array(13).fill(0),
-            battCurrData: Array(13).fill(0),
-            battPowerData: Array(13).fill(0)
-        };
-
-        let rpmData = savedHistory.rpmData;
-        let bikeVoltsData = savedHistory.bikeVoltsData;
-        let bikeCurrData = savedHistory.bikeCurrData;
-        let bikePowerData = savedHistory.bikePowerData;
         
-        let battVoltsData = savedHistory.battVoltsData;
-        let battCurrData = savedHistory.battCurrData;
-        let battPowerData = savedHistory.battPowerData;
-        
-        // Pembedaan 3 Warna Grafik Sesuai Jenis Metrik
-        const colorVolt = '#ea580c';  // Oranye untuk Tegangan (V)
-        const colorCurr = '#16a34a';  // Hijau untuk Arus (A)
-        const colorPower = '#9333ea'; // Ungu untuk Daya (W)
-        const colorRpm = '#0284c7';   // Biru untuk RPM
+        const colorVolt = '#ea580c';  
+        const colorCurr = '#16a34a';  
+        const colorPower = '#9333ea'; 
+        const colorRpm = '#0284c7';   
 
-        // Pembuatan Grafik
+        // Render Grafik
         const chartRpm = createLineChart('chartRpm', 'RPM', colorRpm, rpmData);
         const chartBikeVolts = createLineChart('chartBikeVolts', 'Tegangan (V)', colorVolt, bikeVoltsData);
         const chartBikeCurrent = createLineChart('chartBikeCurrent', 'Arus (A)', colorCurr, bikeCurrData);
         const chartBikePower = createLineChart('chartBikePower', 'Daya (W)', colorPower, bikePowerData); 
-
         const chartBattVolts = createLineChart('chartBattVolts', 'Teg. Baterai (V)', colorVolt, battVoltsData);
         const chartBattCurrent = createLineChart('chartBattCurrent', 'Arus Baterai (A)', colorCurr, battCurrData);
         const chartBattPower = createLineChart('chartBattPower', 'Daya Baterai (W)', colorPower, battPowerData); 
 
-        function updateChartHistory(chartObject, dataArray, newValue) {
-            dataArray.shift(); 
-            dataArray.push(newValue);
-            chartObject.update();
+        // Fungsi Update Data ke Array Terbatas
+        function updateArrayLimit(array, newValue) {
+            array.push(newValue);
+            if(array.length > MAX_POINTS) {
+                array.shift(); 
+            }
         }
 
         // ==========================================
         // 4. LOGIKA PERHITUNGAN PERSENTASE BATERAI
         // ==========================================
         const batteryCurve = [
-            { v: 13.00, p: 100 },
-            { v: 12.75, p: 90 },
-            { v: 12.50, p: 80 },
-            { v: 12.30, p: 70 },
-            { v: 12.15, p: 60 },
-            { v: 12.05, p: 50 },
-            { v: 11.95, p: 40 },
-            { v: 11.81, p: 30 },
-            { v: 11.66, p: 20 },
-            { v: 11.51, p: 10 },
-            { v: 10.50, p: 0 }
+            { v: 13.00, p: 100 }, { v: 12.75, p: 90 }, { v: 12.50, p: 80 }, { v: 12.30, p: 70 },
+            { v: 12.15, p: 60 }, { v: 12.05, p: 50 }, { v: 11.95, p: 40 }, { v: 11.81, p: 30 },
+            { v: 11.66, p: 20 }, { v: 11.51, p: 10 }, { v: 10.50, p: 0 }
         ];
 
         function calculateBatteryPercentage(voltage) {
@@ -923,92 +909,93 @@
         }
 
         // ==========================================
-        // 5. MENDENGARKAN DATA FIREBASE SECARA LIVE
+        // 5. DECODE TIMESTAMP DARI FIREBASE ID
         // ==========================================
-        let currentAlertState = "normal"; 
+        function decodeFirebaseKey(key) {
+            const PUSH_CHARS = '-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz';
+            let timestamp = 0;
+            for (let i = 0; i < 8; i++) {
+                timestamp = timestamp * 64 + PUSH_CHARS.indexOf(key.charAt(i));
+            }
+            return new Date(timestamp);
+        }
 
-        db.ref('/').on('value', (snapshot) => {
+        // ==========================================
+        // 6. MENDENGARKAN DATA HISTORY DARI FIREBASE (GLOBAL SYNC)
+        // ==========================================
+        let renderTimeout;
+
+        // Memanggil riwayat 1 jam terakhir dan meng-update otomatis bila ada data baru
+        db.ref('/history').orderByKey().limitToLast(MAX_POINTS).on('child_added', (snapshot) => {
             const data = snapshot.val();
             
-            if (data) {
-                const rpm = data.rpm || 0;
-                const bikeVolt = data.bikeVolt || 0;
-                const bikeCurr = data.bikeCurr || 0;
-                const battVolt = data.battVolt || 0;
-                const battCurr = data.battCurr || 0;
-                const timeLeft = data.timeLeft || "-- Jam -- Menit";
+            // Konversi ID Firebase menjadi Waktu
+            const timestamp = decodeFirebaseKey(snapshot.key);
+            const timeStr = timestamp.getHours().toString().padStart(2, '0') + ':' + 
+                            timestamp.getMinutes().toString().padStart(2, '0') + ':' + 
+                            timestamp.getSeconds().toString().padStart(2, '0');
 
-                const bikePower = bikeVolt * bikeCurr;
-                const battPower = battVolt * battCurr;
-                const calculatedBattPct = calculateBatteryPercentage(battVolt);
+            const rpm = data.rpm || 0;
+            const bikeVolt = data.bikeVolt || 0;
+            const bikeCurr = data.bikeCurr || 0;
+            const battVolt = data.battVolt || 0;
+            const battCurr = data.battCurr || 0;
+            const timeLeft = data.timeLeft || "-- Jam -- Menit";
 
-                // --- A. UPDATE UI ---
-                document.getElementById('rpmValueText').innerHTML = `${rpm} <br><span class="unit">RPM</span>`;
-                const remaining = 200 - rpm;
-                rpmGauge.data.datasets[0].data = [rpm, remaining < 0 ? 0 : remaining];
-                rpmGauge.update();
+            const bikePower = bikeVolt * bikeCurr;
+            const battPower = battVolt * battCurr;
+            const calculatedBattPct = calculateBatteryPercentage(battVolt);
 
-                document.getElementById('bikeVoltage').innerHTML = `${Number(bikeVolt).toFixed(2)} <span class="unit">V</span>`;
-                document.getElementById('bikeCurrent').innerHTML = `${Number(bikeCurr).toFixed(2)} <span class="unit">A</span>`;
-                document.getElementById('bikePower').innerHTML = `${Number(bikePower).toFixed(2)} <span class="unit">W</span>`;
+            // Menambahkan data baru ke dalam Array
+            updateArrayLimit(timeLabelsData, timeStr);
+            updateArrayLimit(rpmData, rpm);
+            updateArrayLimit(bikeVoltsData, bikeVolt);
+            updateArrayLimit(bikeCurrData, bikeCurr);
+            updateArrayLimit(bikePowerData, bikePower);
+            updateArrayLimit(battVoltsData, battVolt);
+            updateArrayLimit(battCurrData, battCurr);
+            updateArrayLimit(battPowerData, battPower);
 
-                document.getElementById('battVoltage').innerHTML = `${Number(battVolt).toFixed(2)} <span class="unit">V</span>`;
-                document.getElementById('battCurrent').innerHTML = `${Number(battCurr).toFixed(2)} <span class="unit">A</span>`;
-                document.getElementById('battPower').innerHTML = `${Number(battPower).toFixed(2)} <span class="unit">W</span>`;
-                
-                document.getElementById('batteryPercentageText').innerText = `${calculatedBattPct}%`;
-                const batteryLevelBar = document.getElementById('batteryLevelBar');
-                batteryLevelBar.style.width = `${calculatedBattPct}%`;
-                document.getElementById('batteryTimeLeft').innerText = timeLeft;
+            // --- A. UPDATE UI ANGKA ---
+            document.getElementById('rpmValueText').innerHTML = `${rpm} <br><span class="unit">RPM</span>`;
+            const remaining = 200 - rpm;
+            rpmGauge.data.datasets[0].data = [rpm, remaining < 0 ? 0 : remaining];
+            rpmGauge.update();
 
-                // --- B. INDIKATOR WARNA & POP-UP NOTIFIKASI ---
-                if (calculatedBattPct === 100) {
-                    batteryLevelBar.style.backgroundColor = '#0284c7'; 
-                    
-                    if (currentAlertState !== "full") {
-                        Swal.fire({
-                            title: 'Baterai Penuh 100%',
-                            text: 'Penyimpanan daya telah mencapai kapasitas maksimal. Anda dapat menghentikan kayuhan.',
-                            icon: 'success',
-                            background: '#ffffff', color: '#0f172a', confirmButtonColor: '#0284c7'
-                        });
-                        currentAlertState = "full";
-                    }
-                } else if (calculatedBattPct <= 15) {
-                    batteryLevelBar.style.backgroundColor = '#ef4444'; 
+            document.getElementById('bikeVoltage').innerHTML = `${Number(bikeVolt).toFixed(2)} <span class="unit">V</span>`;
+            document.getElementById('bikeCurrent').innerHTML = `${Number(bikeCurr).toFixed(2)} <span class="unit">A</span>`;
+            document.getElementById('bikePower').innerHTML = `${Number(bikePower).toFixed(2)} <span class="unit">W</span>`;
 
-                    if (currentAlertState !== "low") {
-                        Swal.fire({
-                            title: 'Baterai Lemah!',
-                            text: 'Kapasitas baterai mencapai batas kritis (15%). Silakan lakukan kayuhan untuk mengisi daya kembali.',
-                            icon: 'warning',
-                            background: '#ffffff', color: '#0f172a', confirmButtonColor: '#0284c7'
-                        });
-                        currentAlertState = "low";
-                    }
-                } else {
-                    batteryLevelBar.style.backgroundColor = '#22c55e'; // Hijau normal
-                    if(calculatedBattPct > 15 && calculatedBattPct < 100){
-                        currentAlertState = "normal";
-                    }
-                }
+            document.getElementById('battVoltage').innerHTML = `${Number(battVolt).toFixed(2)} <span class="unit">V</span>`;
+            document.getElementById('battCurrent').innerHTML = `${Number(battCurr).toFixed(2)} <span class="unit">A</span>`;
+            document.getElementById('battPower').innerHTML = `${Number(battPower).toFixed(2)} <span class="unit">W</span>`;
+            
+            document.getElementById('batteryPercentageText').innerText = `${calculatedBattPct}%`;
+            const batteryLevelBar = document.getElementById('batteryLevelBar');
+            batteryLevelBar.style.width = `${calculatedBattPct}%`;
+            document.getElementById('batteryTimeLeft').innerText = timeLeft;
 
-                // --- C. UPDATE GRAFIK & SIMPAN KE LOCAL STORAGE ---
-                updateChartHistory(chartRpm, rpmData, rpm);
-                updateChartHistory(chartBikeVolts, bikeVoltsData, bikeVolt);
-                updateChartHistory(chartBikeCurrent, bikeCurrData, bikeCurr);
-                updateChartHistory(chartBikePower, bikePowerData, bikePower);
-
-                updateChartHistory(chartBattVolts, battVoltsData, battVolt);
-                updateChartHistory(chartBattCurrent, battCurrData, battCurr);
-                updateChartHistory(chartBattPower, battPowerData, battPower);
-
-                // Simpan history ke memori browser
-                localStorage.setItem('chartHistorySepeda', JSON.stringify({
-                    rpmData, bikeVoltsData, bikeCurrData, bikePowerData,
-                    battVoltsData, battCurrData, battPowerData
-                }));
+            // --- B. INDIKATOR WARNA BATERAI ---
+            if (calculatedBattPct === 100) {
+                batteryLevelBar.style.backgroundColor = '#0284c7'; 
+            } else if (calculatedBattPct <= 15) {
+                batteryLevelBar.style.backgroundColor = '#ef4444'; 
+            } else {
+                batteryLevelBar.style.backgroundColor = '#22c55e';
             }
+
+            // --- C. OPTIMASI RENDER GRAFIK ---
+            // Delay 100ms: Memastikan browser tidak "hang" saat memuat ratusan data awal sekaligus
+            clearTimeout(renderTimeout);
+            renderTimeout = setTimeout(() => {
+                chartRpm.update();
+                chartBikeVolts.update();
+                chartBikeCurrent.update();
+                chartBikePower.update();
+                chartBattVolts.update();
+                chartBattCurrent.update();
+                chartBattPower.update();
+            }, 100);
         });
 
     </script>
